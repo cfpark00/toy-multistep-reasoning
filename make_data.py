@@ -304,7 +304,7 @@ def generate_problems_splitted_multi_fillers(
                 parts.append(f"G{g}")
 
             # ---------- FSi and S<start> token placement (Type-2 filler) ----------
-            sg_token = f"FS{start}" if random.random() < p_sg_match else f"SG{random.randrange(n_nodes)}"
+            sg_token = f"FS{start}" if random.random() < p_sg_match else f"FS{random.randrange(n_nodes)}"
             if random.random() < p_sg:
                 if random.random() < 0.5:
                     parts.append(sg_token)
