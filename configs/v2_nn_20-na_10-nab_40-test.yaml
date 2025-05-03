@@ -1,0 +1,22 @@
+batch_size: 128
+dataset_path: cfpark00/toy-multistep-v2-nn_20-na_10-nab_40-test
+dataset_split: train
+instruct_mode: false
+model_name: cfpark00/toy-multistep-v2-nn_20-na_10
+model_parallel: false
+save_path: ./data/sft/v2/toy-multistep-v2-nn_20-na_10-nab_40-test
+train_max_length: 128
+training_arguments:
+  bf16: false
+  gradient_accumulation_steps: 1
+  learning_rate: 0.001
+  logging_steps: 12
+  lr_scheduler_type: linear
+  num_train_epochs: 4
+  save_only_model: true
+  save_steps: 0.2
+  save_strategy: steps
+  warmup_ratio: 0.05
+wandb:
+  project_name: toy-multistep-reasoning
+  run_name: toy-multistep-v2-nn_20-na_10-nab_40-test
