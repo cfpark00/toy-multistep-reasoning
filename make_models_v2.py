@@ -35,8 +35,8 @@ if __name__ == "__main__":
     tokenizer.push_to_hub(model_name)
 
     model_config=Qwen2Config(
-        hidden_size=512,
-        intermediate_size=2048,
+        hidden_size=64,
+        intermediate_size=256,
         num_hidden_layers=4,
         num_attention_heads=4,
         num_key_value_heads=4,

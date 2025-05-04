@@ -17,9 +17,9 @@ import lm_tools
 if __name__ == "__main__":
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n_n", type=int, default=5)
-    parser.add_argument("--n_a", type=int, default=5)
-    parser.add_argument("--n_ab", type=int, default=5)
+    parser.add_argument("--n_n", type=int, default=20)
+    parser.add_argument("--n_a", type=int, default=10)
+    parser.add_argument("--n_ab", type=int, default=40)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--n_problems", type=int, default=4096)
     args = parser.parse_args()
@@ -30,24 +30,25 @@ if __name__ == "__main__":
     seed=args.seed
     n_problems=args.n_problems
 
-    model_name=f"./data/sft/toy-multistep-nn_{n_n}-na_{n_a}-nab_{n_ab}-seed_{seed}/final_model"
-    dataset_name=f"cfpark00/toy-multistep-nn_{n_n}-na_{n_a}-nab_{n_ab}-seed_{seed}"
+    model_name=f"./data/sft/v2/toy-multistep-v2-nn_{n_n}-na_{n_a}-nab_{n_ab}-seed_{seed}/checkpoint-2504"#final_model"#
+    dataset_name=f"cfpark00/toy-multistep-v2-nn_{n_n}-na_{n_a}-nab_{n_ab}-seed_{seed}"
 
     model=transformers.AutoModelForCausalLM.from_pretrained(model_name)
     tokenizer=transformers.AutoTokenizer.from_pretrained(model_name)
     model=model.to(device=device)
-
-    dataset=datasets.load_dataset(f"cfpark00/toy-multistep-nn_{n_n}-na_{n_a}-nab_{n_ab}-seed_{seed}")
+    dataset=datasets.load_dataset(dataset_name)
 
     eval_data={}
     for split in dataset.keys():
         print(f"Split: {split}")
+        if split not in ["train", "test_nm_0"]:
+            continue
         ds=dataset[split].select(range(n_problems))
         num_maskeds=np.array(ds["num_maskeds"])
         print("average num_maskeds:", num_maskeds.mean())
-        prompts=ds["prompts"]
+        prompts=ds["prompt"]
         prompt_token_ids,prompt_attention_masks=lm_tools.tokenize(tokenizer, texts=prompts,chunk_size=1024,padding_side="left",get_attention_mask=True)
-        completions=ds["completions"]
+        completions=ds["completion"]
         completion_token_ids,completion_attention_masks=lm_tools.tokenize(tokenizer, texts=completions,chunk_size=1024,padding_side="right",get_attention_mask=True)
         #print(prompt_token_ids.shape,prompt_attention_masks.shape,completion_token_ids.shape,completion_attention_masks.shape)
 
@@ -99,8 +100,8 @@ if __name__ == "__main__":
         print(f"pass@32 (t=1): {coverage_t1:.4f}")
         
         eval_data_element={
-            "prompts": prompts,
-            "completions": completions,
+            "prompt": prompts,
+            "completion": completions,
             "num_maskeds": num_maskeds,
             "corrects_t0": corrects_t0,
             "accuracy_t0": corrects_t0,
