@@ -210,14 +210,14 @@ def generate_problems_splitted_multi_fillers(
         max_path_len        : int   = 9,
 
         # ───────── filler hyper-parameters ────────────────────────────────
-        p_fg                : float = 0.60,   # prob. insert Type-1  FGi
+        p_fg                : float = 0.90,   # prob. insert Type-1  FGi
         p_fg_match          : float = 0.85,   # …and use i == g with this prob.
 
-        p_sg                : float = 0.60,   # prob. insert Type-2  FSi
-        p_sg_match          : float = 0.85,   # …and use i == start-state
+        p_fs                : float = 0.90,   # prob. insert Type-2  FSi
+        p_fs_match          : float = 0.85,   # …and use i == start-state
 
-        p_ag                : float = 0.60,   # prob. insert Type-3  FAi between any two actions
-        p_ag_correct        : float = 0.70,   # …and use i == *true* next-state
+        p_fa                : float = 0.90,   # prob. insert Type-3  FAi between any two actions
+        p_fa_correct        : float = 0.70,   # …and use i == *true* next-state
 
         balance_graphs      : bool  = True,   # round-robin across graphs
 ):
@@ -238,12 +238,12 @@ def generate_problems_splitted_multi_fillers(
     # ---------- split bookkeeping ------------------------------------------
     split_keys = (
         ["train"] +
-        [f"rl_nm_{k}"   for k in range(5)] +
+        ["train_rl"] +
         [f"test_nm_{k}" for k in range(5)]
     )
     n_per_split = {
         "train":      n_problems_train,
-        **{f"rl_nm_{k}":   n_problems_rl   for k in range(5)},
+        "train_rl":   n_problems_rl,
         **{f"test_nm_{k}": n_problems_test for k in range(5)},
     }
     data = {k: dict(paths=[], actionss=[], prompts=[], completions=[],
@@ -259,9 +259,23 @@ def generate_problems_splitted_multi_fillers(
     # ---------- main loop ---------------------------------------------------
     for key in split_keys:
         n_targets          = n_per_split[key]
-        num_maskeds_allowed = (
-            [0] if key == "train" else [int(key.split("_nm_")[1])]
-        )
+        if key == "train":
+            num_maskeds_allowed = [0]
+            p_fg_match_used = p_fg_match
+            p_fs_match_used = p_fs_match
+            p_fa_correct_used = p_fa_correct
+        elif key == "train_rl":
+            num_maskeds_allowed = [0, 1, 2, 3, 4]
+            p_fg_match_used = p_fg_match
+            p_fs_match_used = p_fs_match
+            p_fa_correct_used = p_fa_correct
+        else:
+            num_maskeds_allowed = [int(key.split("_nm_")[1])]
+            p_fg_match_used = 0.0
+            p_fs_match_used = 0.0
+            p_fa_correct_used = 0.0
+
+        
         pbar = tqdm.trange(n_targets, desc=f"Split: {key}")
 
         while len(data[key]["paths"]) < n_targets:
@@ -292,7 +306,7 @@ def generate_problems_splitted_multi_fillers(
             parts = []
 
             # ---------- FGi and Gg token placement (Type-1 filler) ----------------
-            fg_token = f"FG{g}" if random.random() < p_fg_match else f"FG{random.randrange(n_graphs)}"
+            fg_token = f"FG{g}" if random.random() < p_fg_match_used else f"FG{random.randrange(n_graphs)}"
             if random.random() < p_fg:
                 if random.random() < 0.5:
                     parts.append(fg_token)
@@ -304,8 +318,8 @@ def generate_problems_splitted_multi_fillers(
                 parts.append(f"G{g}")
 
             # ---------- FSi and S<start> token placement (Type-2 filler) ----------
-            sg_token = f"FS{start}" if random.random() < p_sg_match else f"FS{random.randrange(n_nodes)}"
-            if random.random() < p_sg:
+            sg_token = f"FS{start}" if random.random() < p_fs_match_used else f"FS{random.randrange(n_nodes)}"
+            if random.random() < p_fs:
                 if random.random() < 0.5:
                     parts.append(sg_token)
                     parts.append(f"S{start}")
@@ -318,9 +332,9 @@ def generate_problems_splitted_multi_fillers(
             # actions (+ optional Type-3 FAi)
             for j, a in enumerate(actions):
                 parts.append(f"A{a}")
-                if j < len(actions) - 1 and random.random() < p_ag:
+                if j < len(actions) - 1 and random.random() < p_fa:
                     # decide whether FAi is 'correct'
-                    if random.random() < p_ag_correct:
+                    if random.random() < p_fa_correct_used:
                         ag_i = path[j + 1]             # the *true* next state
                     else:
                         ag_i = random.randrange(n_nodes)
@@ -350,9 +364,9 @@ def generate_problems_splitted_multi_fillers(
 
 if __name__ == "__main__":
     #hyper parameters
-    n_problems_train = 50_000 #
-    n_problems_rl = 1_000 #per 1 out 2 out 3 out 4out
-    n_problems_test = 1_000 #per 1 out 2 out 3 out 4out
+    n_problems_train = 100_000 #
+    n_problems_rl = 10_000 #per 1 out 2 out 3 out 4out
+    n_problems_test = 5_000 #per 1 out 2 out 3 out 4out
     gen_func=generate_problems_splitted_multi_fillers
     gen_func_kwargs={
         "n_problems_train":n_problems_train,
@@ -396,7 +410,7 @@ if __name__ == "__main__":
         
         # generate graph bank
         edge_mats, edge_mats_masked = make_graph_bank(
-            n_graphs=2, n_nodes=n_nodes, n_actions=n_actions, n_ablate=n_ablate
+            n_graphs=10, n_nodes=n_nodes, n_actions=n_actions, n_ablate=n_ablate
         )
         # generate problems
         data = gen_func(edge_mats, edge_mats_masked, **gen_func_kwargs)
