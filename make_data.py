@@ -361,6 +361,24 @@ def generate_problems_splitted_multi_fillers(
     }
     return data
 
+def space_out(text):
+    text=text.replace("FG","F G")
+    text=text.replace("FS","F S")
+    text=text.replace("FA","F A")
+    text=text.replace("G","G ")
+    text=text.replace("S","S ")
+    text=text.replace("A","A ")
+    text=text.strip()
+    return text
+
+def preprocess(element):
+    data={}
+    for key in ["prompts","completions","texts"]:
+        data[key]=space_out(element[key])
+    data["prompt"]=data["prompts"]
+    data["completion"]=data["completions"]
+    data["text"]=data["texts"]
+    return data
 
 if __name__ == "__main__":
     #hyper parameters
@@ -371,8 +389,21 @@ if __name__ == "__main__":
     gen_func_kwargs={
         "n_problems_train":n_problems_train,
         "n_problems_rl":n_problems_rl,
-        "n_problems_test":n_problems_test
+        "n_problems_test":n_problems_test,
+        
+        "max_path_len": 9,
+        "p_fg": 0.9,   # prob. insert Type-1  FGi
+        "p_fg_match": 0.9,   # …and use i == g with this prob.
+
+        "p_fs": 0.9,   # prob. insert Type-2  FSi
+        "p_fs_match": 0.9,   # …and use i == start-state
+
+        "p_fa": 0.9,   # prob. insert Type-3  FAi between any two actions
+        "p_fa_correct": 0.9,   # …and use i == *true* next-state
+
+        "balance_graphs": True,   # round-robin across graphs
     }
+    
     argss=[]
     for n_nodes in [20]:
         for n_actions in [10]:
@@ -433,8 +464,9 @@ if __name__ == "__main__":
             }
             dataset_data[key]=datasets.Dataset.from_dict(data_)
         dataset=datasets.DatasetDict(dataset_data)
+        dataset=dataset.map(preprocess)
         #push to hub
-        dataset_name=f"sunnytqin/toy-multistep-nn_{n_nodes}-na_{n_actions}-nab_{n_ablate}-seed_{seed}"
+        dataset_name=f"cfpark00/toy-multistep-v2-nn_{n_nodes}-na_{n_actions}-nab_{n_ablate}-seed_{seed}"
         dataset.push_to_hub(dataset_name)
         print(f"Dataset pushed to hub: {dataset_name}")
         print("\n\n")
