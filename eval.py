@@ -9,10 +9,36 @@ import json
 import os
 
 import sys
-sys.path.append("/n/home12/cfpark00/ML/tools")
-
 import lm_tools
 
+def last_token_accuracy(pred: torch.Tensor, target: torch.Tensor, pad_token: int = 2) -> torch.Tensor:
+    """
+    Computes per-sample accuracy of the last non-pad token in `pred` vs `target`.
+    
+    Args:
+        pred (torch.Tensor): shape (batch_size, seq_len)
+        target (torch.Tensor): shape (batch_size, seq_len)
+        pad_token (int): token ID used for padding
+    
+    Returns:
+        torch.Tensor: shape (batch_size,), each element is True/False indicating match
+    """
+    # Get mask of pad tokens
+    pad_mask = (target == pad_token)
+    
+    # Find first pad index for each sample (or seq_len if no pad)
+    first_pad_idx = pad_mask.float().cumsum(dim=1).eq(1).float().argmax(dim=1)
+    
+    # Handle cases where no pad token is found (i.e., full sequence is non-pad)
+    no_pad = ~pad_mask.any(dim=1)
+    first_pad_idx[no_pad] = target.size(1)
+
+    # Index last non-pad token from pred and target
+    gather_idx = (first_pad_idx - 1).clamp(min=0).unsqueeze(1)  # (batch_size, 1)
+    pred_last = pred.gather(1, gather_idx).squeeze(1)
+    target_last = target.gather(1, gather_idx).squeeze(1)
+
+    return pred_last == target_last  # (batch_size,)
 
 if __name__ == "__main__":
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -30,19 +56,20 @@ if __name__ == "__main__":
     seed=args.seed
     n_problems=args.n_problems
 
-    model_name=f"./data/sft/v2/toy-multistep-v2-nn_{n_n}-na_{n_a}-nab_{n_ab}-seed_{seed}/checkpoint-2504"#final_model"#
-    dataset_name=f"cfpark00/toy-multistep-v2-nn_{n_n}-na_{n_a}-nab_{n_ab}-seed_{seed}"
+    model_name=f'./data/sft/v2/toy-multistep-v2-nn_20-na_10-nab_40-seed_0/final_model'
+    dataset_name=f"sunnytqin/toy-multistep-v2-nn_20-na_10-nab_40-seed_0"
 
     model=transformers.AutoModelForCausalLM.from_pretrained(model_name)
+    print(model)
     tokenizer=transformers.AutoTokenizer.from_pretrained(model_name)
     model=model.to(device=device)
     dataset=datasets.load_dataset(dataset_name)
 
     eval_data={}
     for split in dataset.keys():
-        print(f"Split: {split}")
-        if split not in ["train", "test_nm_0"]:
+        if split not in ["train", "test_nm_0", "test_nm_1", "test_nm_2", "test_nm_3"]:
             continue
+        print(f"Split: {split}")
         ds=dataset[split].select(range(n_problems))
         num_maskeds=np.array(ds["num_maskeds"])
         print("average num_maskeds:", num_maskeds.mean())
@@ -74,6 +101,8 @@ if __name__ == "__main__":
             
             error=(pred!=answer_ids)#*(answer_masks==1)
             corrects_t0.extend(torch.all(~error,dim=1).cpu().numpy())
+            # last_token_accuracy_t0=last_token_accuracy(pred, answer_ids)
+            # corrects_t0.extend(last_token_accuracy_t0.cpu().numpy())
         corrects_t0=np.array(corrects_t0)
         print(f"pass@1 (t=0): {corrects_t0.mean():.4f}")
 
@@ -94,6 +123,8 @@ if __name__ == "__main__":
             )[:,len(token_ids[0]):]
             error=(pred!=answer_ids)#*(answer_masks==1)
             corrects_t1.append(torch.all(~error,dim=1).reshape(-1,32).cpu().numpy())
+            # last_token_accuracy_t1=last_token_accuracy(pred, answer_ids)
+            # corrects_t1.append(last_token_accuracy_t1.reshape(-1,32).cpu().numpy())
         corrects_t1=np.concatenate(corrects_t1,axis=0)
         print(f"pass@1 (t=1): {corrects_t1.mean():.4f}")
         coverage_t1=np.any(corrects_t1,axis=1).astype(np.float32).mean()
