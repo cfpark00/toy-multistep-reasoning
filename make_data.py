@@ -7,6 +7,7 @@ import numpy as np
 import datasets
 import itertools
 import random
+import re
 
 # Check if a directed graph is strongly connected using matrix multiplication to compute reachability.
 def is_strongly_connected(adj):
@@ -89,6 +90,22 @@ def make_graph_bank(n_graphs: int,
         edge_mats.append(em)
         edge_mats_masked.append(em_masked)
     return edge_mats, edge_mats_masked
+
+def split_letters_preserve_numbers(text: str) -> str:
+    """
+    Splits each token into characters, but preserves multi-digit numbers.
+    Example:
+        'FG1'   -> 'F G 1'
+        'FS12'  -> 'F S 12'
+        'S12'   -> 'S 12'
+    """
+    tokens = text.strip().split()
+    split_tokens = []
+    for token in tokens:
+        # Find all letter and number chunks, e.g., ['F', 'S', '12']
+        parts = re.findall(r'[A-Z]|[0-9]+', token)
+        split_tokens.append(" ".join(parts))
+    return " ".join(split_tokens)
 
 # Generate a dataset of graph navigation problems
 def generate_problems(edge_mat, edge_mat_masked, n_problems):
@@ -211,13 +228,13 @@ def generate_problems_splitted_multi_fillers(
 
         # ───────── filler hyper-parameters ────────────────────────────────
         p_fg                : float = 0.90,   # prob. insert Type-1  FGi
-        p_fg_match          : float = 0.85,   # …and use i == g with this prob.
+        p_fg_match          : float = 0.90,   # …and use i == g with this prob.
 
         p_fs                : float = 0.90,   # prob. insert Type-2  FSi
-        p_fs_match          : float = 0.85,   # …and use i == start-state
+        p_fs_match          : float = 0.90,   # …and use i == start-state
 
         p_fa                : float = 0.90,   # prob. insert Type-3  FAi between any two actions
-        p_fa_correct        : float = 0.70,   # …and use i == *true* next-state
+        p_fa_correct        : float = 0.90,   # …and use i == *true* next-state
 
         balance_graphs      : bool  = True,   # round-robin across graphs
 ):
@@ -238,12 +255,12 @@ def generate_problems_splitted_multi_fillers(
     # ---------- split bookkeeping ------------------------------------------
     split_keys = (
         ["train"] +
-        ["train_rl"] +
+        [f"rl_nm_{k}" for k in range(1, 4)] +
         [f"test_nm_{k}" for k in range(5)]
     )
     n_per_split = {
         "train":      n_problems_train,
-        "train_rl":   n_problems_rl,
+        **{f"rl_nm_{k}": n_problems_test for k in range(1, 4)},
         **{f"test_nm_{k}": n_problems_test for k in range(5)},
     }
     data = {k: dict(paths=[], actionss=[], prompts=[], completions=[],
@@ -264,8 +281,8 @@ def generate_problems_splitted_multi_fillers(
             p_fg_match_used = p_fg_match
             p_fs_match_used = p_fs_match
             p_fa_correct_used = p_fa_correct
-        elif key == "train_rl":
-            num_maskeds_allowed = [0, 1, 2, 3, 4]
+        elif "rl" in key:
+            num_maskeds_allowed = [int(key.split("_nm_")[1])]
             p_fg_match_used = p_fg_match
             p_fs_match_used = p_fs_match
             p_fa_correct_used = p_fa_correct
@@ -452,15 +469,18 @@ if __name__ == "__main__":
         for key in data.keys():
             if key == "graphs":
                 continue
-            prompts=data[key]['prompts']
-            completions=data[key]['completions']
+            prompts=[split_letters_preserve_numbers(p) for p in data[key]['prompts']]
+            completions=[split_letters_preserve_numbers(c) for c in data[key]['completions']]
             num_maskeds=data[key]['num_maskeds']
-            texts=[p+c for p,c in zip(prompts,completions)]
+            texts=[p+c for p, c in zip(prompts,completions)]
             data_={
+                "prompt": prompts,
+                "completion": completions,
+                'text': texts,
                 "prompts": prompts,
                 "completions": completions,
                 "num_maskeds": num_maskeds,
-                'texts': texts,
+                'texts': texts,   
             }
             dataset_data[key]=datasets.Dataset.from_dict(data_)
         dataset=datasets.DatasetDict(dataset_data)
